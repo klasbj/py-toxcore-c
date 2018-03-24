@@ -551,7 +551,28 @@ ToxCore_friend_send_message(ToxCore* self, PyObject* args)
   TOX_ERR_FRIEND_SEND_MESSAGE errmsg = 0;
   uint32_t ret = tox_friend_send_message(self->tox, friend_num, type, message, length, &errmsg);
   if (ret == 0) {
-     PyErr_SetString(ToxOpError, "failed to send message");
+    switch (errmsg) {
+      case TOX_ERR_FRIEND_SEND_MESSAGE_NULL:
+        PyErr_SetString(ToxOpError, "Failed to send message: one of the arguments to the function was NULL when it was not expected.");
+        break;
+      case TOX_ERR_FRIEND_SEND_MESSAGE_FRIEND_NOT_FOUND:
+        PyErr_SetString(ToxOpError, "Failed to send message: the friend number did not designate a valid friend.");
+        break;
+      case TOX_ERR_FRIEND_SEND_MESSAGE_FRIEND_NOT_CONNECTED:
+        PyErr_SetString(ToxOpError, "Failed to send message: this client is currently not connected to the friend.");
+        break;
+      case TOX_ERR_FRIEND_SEND_MESSAGE_SENDQ:
+        PyErr_SetString(ToxOpError, "Failed to send message: an allocation error occurred while increasing the send queue size.");
+        break;
+      case TOX_ERR_FRIEND_SEND_MESSAGE_TOO_LONG:
+        PyErr_SetString(ToxOpError, "Failed to send message: message length exceeded TOX_MAX_MESSAGE_LENGTH.");
+        break;
+      case TOX_ERR_FRIEND_SEND_MESSAGE_EMPTY:
+        PyErr_SetString(ToxOpError, "Failed to send message: attempted to send a zero-length message.");
+        break;
+      default:
+        PyErr_SetString(ToxOpError, "Failed to send message");
+    }
     return NULL;
   }
 
