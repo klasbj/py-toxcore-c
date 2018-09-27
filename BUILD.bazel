@@ -1,6 +1,6 @@
-load("//tools:project.bzl", "project")
+load("//tools/project:build_defs.bzl", "project")
 
-project("py-toxcore-c")
+project()
 
 cc_binary(
     name = "pytox.so",
@@ -8,8 +8,15 @@ cc_binary(
         "pytox/*.c",
         "pytox/*.h",
     ]),
-    copts = ["-DENABLE_AV"],
-    linkopts = ["-Wl,--version-script,$(location pytox.ld)"],
+    copts = [
+        "-DENABLE_AV",
+        "-Wno-strict-aliasing",
+    ],
+    linkopts = select({
+        "@toktok//tools/config:freebsd": ["-Wl,--version-script,$(location pytox.ld)"],
+        "@toktok//tools/config:linux": ["-Wl,--version-script,$(location pytox.ld)"],
+        "@toktok//tools/config:osx": [],
+    }),
     linkshared = True,
     visibility = ["//visibility:public"],
     deps = [

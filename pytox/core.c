@@ -2,7 +2,8 @@
  * @file   core.c
  * @author Wei-Ning Huang (AZ) <aitjcize@gmail.com>
  *
- * Copyright (C) 2013 - 2014  Wei-Ning Huang (AZ) <aitjcize@gmail.com>
+ * Copyright © 2017-2018 The TokTok team.
+ * Copyright © 2013-2014 Wei-Ning Huang (AZ) <aitjcize@gmail.com>
  * All Rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -172,7 +173,8 @@ static void callback_file_recv_chunk(Tox *tox, uint32_t friend_number, uint32_t 
                         friend_number, file_number, position, data, length);
 }
 
-static void init_options(ToxCore* self, PyObject* pyopts, struct Tox_Options* tox_opts)
+static void init_options(ToxCore* self, PyObject* pyopts, struct Tox_Options* tox_opts,
+                         uint8_t **savedata_data, char **proxy_host)
 {
     char *buf = NULL;
     Py_ssize_t sz = 0;
@@ -181,18 +183,19 @@ static void init_options(ToxCore* self, PyObject* pyopts, struct Tox_Options* to
     p = PyObject_GetAttrString(pyopts, "savedata_data");
     PyBytes_AsStringAndSize(p, &buf, &sz);
     if (sz > 0) {
-        uint8_t *savedata_data = calloc(1, sz); /* XXX: Memory leak! */
-        memcpy(savedata_data, buf, sz);
+        *savedata_data = calloc(1, sz);
+        memcpy(*savedata_data, buf, sz);
         tox_options_set_savedata_type(tox_opts, TOX_SAVEDATA_TYPE_TOX_SAVE);
-        tox_options_set_savedata_data(tox_opts, savedata_data, sz);
+        tox_options_set_savedata_data(tox_opts, *savedata_data, sz);
     }
 
     p = PyObject_GetAttrString(pyopts, "proxy_host");
     PyStringUnicode_AsStringAndSize(p, &buf, &sz);
     if (sz > 0) {
-        char *proxy_host = calloc(1, sz); /* XXX: Memory leak! */
-        memcpy(proxy_host, buf, sz);
-        tox_options_set_proxy_host(tox_opts, proxy_host);
+        // Needs +1 for the NUL byte at the end.
+        *proxy_host = calloc(1, sz + 1);
+        memcpy(*proxy_host, buf, sz);
+        tox_options_set_proxy_host(tox_opts, *proxy_host);
     }
 
     p = PyObject_GetAttrString(pyopts, "proxy_port");
@@ -213,6 +216,11 @@ static void init_options(ToxCore* self, PyObject* pyopts, struct Tox_Options* to
     p = PyObject_GetAttrString(pyopts, "udp_enabled");
     if (p) {
         tox_options_set_udp_enabled(tox_opts, p == Py_True);
+    }
+
+    p = PyObject_GetAttrString(pyopts, "local_discovery_enabled");
+    if (p) {
+        tox_options_set_local_discovery_enabled(tox_opts, p == Py_True);
     }
 
     p = PyObject_GetAttrString(pyopts, "start_port");
@@ -251,13 +259,17 @@ static int init_helper(ToxCore* self, PyObject* args)
   }
 
   struct Tox_Options *options = tox_options_new(NULL);
+  uint8_t *savedata_data = NULL;
+  char *proxy_host = NULL;
 
   if (opts != NULL) {
-      init_options(self, opts, options);
+      init_options(self, opts, options, &savedata_data, &proxy_host);
   }
 
   TOX_ERR_NEW err = 0;
   Tox* tox = tox_new(options, &err);
+  free(savedata_data);
+  free(proxy_host);
   tox_options_free(options);
 
   if (tox == NULL) {
@@ -294,20 +306,11 @@ ToxCore_new(PyTypeObject *type, PyObject* args, PyObject* kwds)
   ToxCore* self = (ToxCore*)type->tp_alloc(type, 0);
   self->tox = NULL;
 
-  /* We don't care about subclass's arguments */
-  if (init_helper(self, NULL) == -1) {
-    return NULL;
-  }
-
   return (PyObject*)self;
 }
 
 static int ToxCore_init(ToxCore* self, PyObject* args, PyObject* kwds)
 {
-  /* since __init__ in Python is optional(superclass need to call it
-   * explicitly), we need to initialize self->tox in ToxCore_new instead of
-   * init. If ToxCore_init is called, we re-initialize self->tox and pass
-   * the new ipv6enabled setting. */
   return init_helper(self, args);
 }
 
@@ -698,7 +701,7 @@ ToxCore_self_set_status(ToxCore* self, PyObject* args)
   }
 
   tox_self_set_status(self->tox, status);
-  if (true == false) {
+  if (/* DISABLES CODE */ (true) == false) {
     PyErr_SetString(ToxOpError, "failed to set status");
     return NULL;
   }
@@ -926,6 +929,30 @@ ToxCore_conference_delete(ToxCore* self, PyObject* args)
   }
 
   Py_RETURN_NONE;
+}
+
+static PyObject *
+ToxCore_conference_get_id(ToxCore *self, PyObject *args)
+{
+  CHECK_TOX(self);
+
+  int conference_number = 0;
+
+  if (!PyArg_ParseTuple(args, "i", &conference_number)) {
+    PyErr_SetString(ToxOpError, "failed to parse arguments");
+    return NULL;
+  }
+
+  uint8_t id[TOX_CONFERENCE_ID_SIZE];
+  bool success = tox_conference_get_id(self->tox, conference_number, id);
+  if (!success) {
+    PyErr_SetString(ToxOpError, "failed to get conference id");
+    return NULL;
+  }
+
+  uint8_t hex[TOX_CONFERENCE_ID_SIZE * 2 + 1] = {0};
+  bytes_to_hex_string(id, TOX_CONFERENCE_ID_SIZE, hex);
+  return PYSTRING_FromString((const char *)hex);
 }
 
 static PyObject*
@@ -1282,6 +1309,36 @@ ToxCore_file_get_file_id(ToxCore* self, PyObject* args)
 
     bytes_to_hex_string(file_id, TOX_FILE_ID_LENGTH, hex);
     return PYSTRING_FromStringAndSize((char*)hex, TOX_FILE_ID_LENGTH * 2);
+}
+
+static PyObject*
+ToxCore_self_get_dht_id(ToxCore* self, PyObject* args)
+{
+    CHECK_TOX(self);
+
+    uint8_t dht_id[TOX_PUBLIC_KEY_SIZE];
+    uint8_t dht_id_hex[TOX_PUBLIC_KEY_SIZE * 2 + 1];
+    memset(dht_id_hex, 0, TOX_PUBLIC_KEY_SIZE * 2 + 1);
+
+    tox_self_get_dht_id(self->tox, dht_id);
+    bytes_to_hex_string(dht_id, TOX_PUBLIC_KEY_SIZE, dht_id_hex);
+
+    return PYSTRING_FromString((const char*)dht_id_hex);
+}
+
+static PyObject*
+ToxCore_self_get_udp_port(ToxCore* self, PyObject* args)
+{
+    CHECK_TOX(self);
+
+    TOX_ERR_GET_PORT err;
+    uint16_t nospam = tox_self_get_udp_port(self->tox, &err);
+    if (err != TOX_ERR_GET_PORT_OK) {
+        PyErr_Format(ToxOpError, "tox_self_get_udp_port() failed: %d", err);
+        Py_RETURN_NONE;
+    }
+
+    return PyLong_FromUnsignedLongLong(nospam);
 }
 
 static PyObject*
@@ -1753,6 +1810,11 @@ static PyMethodDef Tox_methods[] = {
     "Delete a conference from the chats array."
   },
   {
+    "conference_get_id", (PyCFunction)ToxCore_conference_get_id, METH_VARARGS,
+    "conference_get_id(conference_number)\n"
+    "Gets conference unique ID."
+  },
+  {
     "conference_peer_get_name", (PyCFunction)ToxCore_conference_peer_get_name, METH_VARARGS,
     "conference_peer_get_name(conference_number, peer_number)\n"
     "Get the conference peer's name."
@@ -1817,6 +1879,18 @@ static PyMethodDef Tox_methods[] = {
     "file_get_file_id", (PyCFunction)ToxCore_file_get_file_id, METH_VARARGS,
     "file_get_file_id(friend_number, file_number)\n"
     "Send a file send request. Returns file id's hex string"
+  },
+  {
+    "self_get_dht_id", (PyCFunction)ToxCore_self_get_dht_id,
+    METH_NOARGS,
+    "self_get_dht_id()\n"
+    "get the temporary DHT public key"
+  },
+  {
+    "self_get_udp_port", (PyCFunction)ToxCore_self_get_udp_port,
+    METH_NOARGS,
+    "self_get_udp_port()\n"
+    "Return the UDP port this Tox instance is bound to."
   },
   {
     "self_get_nospam", (PyCFunction)ToxCore_self_get_nospam,
@@ -1929,7 +2003,7 @@ PyTypeObject ToxCoreType = {
   ToxCore_new,               /* tp_new */
 };
 
-void ToxCore_install_dict()
+void ToxCore_install_dict(void)
 {
 #define SET(name)                                            \
     PyObject* obj_##name = PyLong_FromLong(TOX_##name);      \

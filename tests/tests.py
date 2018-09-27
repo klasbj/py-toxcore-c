@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 #
 # @file   tests.py
 # @author Wei-Ning Huang (AZ) <aitjcize@gmail.com>
 #
-# Copyright (C) 2013 - 2014 Wei-Ning Huang (AZ) <aitjcize@gmail.com>
+# Copyright © 2017-2018 The TokTok team.
+# Copyright © 2013-2014 Wei-Ning Huang (AZ) <aitjcize@gmail.com>
 # All Rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -54,6 +56,7 @@ class ToxOptions():
     def __init__(self):
         self.ipv6_enabled = True
         self.udp_enabled = True
+        self.local_discovery_enabled = False
         self.proxy_type = 0  # 1=http, 2=socks
         self.proxy_host = ''
         self.proxy_port = 0
@@ -67,10 +70,14 @@ class ToxOptions():
 
 class AliceTox(Tox):
     def __init__(self, opts):
+        """
+        t:on_log
+        """
         super(AliceTox, self).__init__(opts)
 
         def on_log(self, level, file, line, func, message):
-            print((level, file, line, func, message))
+            if level > 0:
+                print((level, file, line, func, message))
         AliceTox.on_log = on_log
 
 
@@ -81,9 +88,17 @@ class BobTox(Tox):
 
 class ToxTest(unittest.TestCase):
     def setUp(self):
+        """
+        t:bootstrap
+        t:self_get_dht_id
+        t:self_get_udp_port
+        """
         opt = ToxOptions()
         self.alice = AliceTox(opt)
         self.bob = BobTox(opt)
+
+        self.bob.bootstrap("localhost", self.alice.self_get_udp_port(),
+                self.alice.self_get_dht_id())
 
         self.loop_until_connected()
 
@@ -499,6 +514,7 @@ class ToxTest(unittest.TestCase):
         t:conference_get_chatlist_size
         t:conference_get_chatlist
         t:conference_send_message
+        t:conference_get_id
         t:conference_get_title
         t:conference_get_type
         t:conference_send_message
@@ -573,6 +589,25 @@ class ToxTest(unittest.TestCase):
         #: Test title change
         self.bob.conference_set_title(group_id, 'My special title')
         assert self.bob.conference_get_title(group_id) == 'My special title'
+
+        #: Test conference ID getter (32 * 2 characters).
+        assert len(self.bob.conference_get_id(group_id)) == 64
+
+        # Invalid conference id:
+        has_error = False
+        try:
+            self.bob.conference_get_id(1234)
+        except OperationFailedError:
+            has_error = True
+        assert has_error
+
+        # Invalid type for conference id:
+        has_error = False
+        try:
+            self.bob.conference_get_id("1234")
+        except OperationFailedError:
+            has_error = True
+        assert has_error
 
         #: Test group message
         AID = self.aid

@@ -2,7 +2,8 @@
  * @file   tox.c
  * @author Wei-Ning Huang (AZ) <aitjcize@gmail.com>
  *
- * Copyright (C) 2013 - 2014  Wei-Ning Huang (AZ) <aitjcize@gmail.com>
+ * Copyright © 2017-2018 The TokTok team.
+ * Copyright © 2013-2014 Wei-Ning Huang (AZ) <aitjcize@gmail.com>
  * All Rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -31,6 +32,7 @@
 #endif
 
 #if PY_MAJOR_VERSION >= 3
+extern struct PyModuleDef moduledef;
 struct PyModuleDef moduledef = {
   PyModuleDef_HEAD_INIT,
   "pytox",
@@ -44,12 +46,13 @@ struct PyModuleDef moduledef = {
 };
 #endif
 
-PyMODINIT_FUNC initpytox(void);
 #if PY_MAJOR_VERSION >= 3
+PyMODINIT_FUNC PyInit_pytox(void);
 PyMODINIT_FUNC PyInit_pytox(void)
 {
   PyObject *m = PyModule_Create(&moduledef);
 #else
+PyMODINIT_FUNC initpytox(void);
 PyMODINIT_FUNC initpytox(void)
 {
   PyObject *m = Py_InitModule("pytox", NULL);

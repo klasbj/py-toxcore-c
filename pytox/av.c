@@ -2,7 +2,8 @@
  * @file   av.c
  * @author Wei-Ning Huang (AZ) <aitjcize@gmail.com>
  *
- * Copyright (C) 2013 - 2014  Wei-Ning Huang (AZ) <aitjcize@gmail.com>
+ * Copyright © 2017-2018 The TokTok team.
+ * Copyright © 2013-2014 Wei-Ning Huang (AZ) <aitjcize@gmail.com>
  * All Rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -721,7 +722,7 @@ PyTypeObject ToxAVCoreType = {
     ToxAVCore_new,                 /* tp_new */
 };
 
-void ToxAVCore_install_dict()
+void ToxAVCore_install_dict(void)
 {
 #define SET(name)                                           \
     PyObject* obj_##name = PyLong_FromLong(TOXAV_##name);   \
